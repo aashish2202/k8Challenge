@@ -1,0 +1,164 @@
+-- Create Config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fresco-config
+data:
+  Server_URL: http://example.com
+
+kubectl apply -f configmap.yaml
+
+kubectl get configmaps
+
+-- Create Pods
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:latest
+    env:
+    - name: SERVER_URL_ENV
+      valueFrom:
+        configMapKeyRef:
+          name: fresco-config
+          key: Server_URL
+
+kubectl apply -f pod.yaml
+kubectl get pods
+kubectl exec -it nginx-pod -- env | grep SERVER_URL_ENV
+
+-- Create Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fresco-secret
+type: Opaque
+data:
+  user: YWRtaW4=  # Base64-encoded value for 'admin'
+  pass: cGFzcw==  # Base64-encoded value for 'pass'
+
+kubectl apply -f secret.yaml
+
+--Mount secret to pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:latest
+    volumeMounts:
+    - name: secret-volume
+      mountPath: /etc/test
+      readOnly: true
+  volumes:
+  - name: secret-volume
+    secret:
+      secretName: fresco-secret
+
+kubectl apply -f pod.yaml
+kubectl get pods
+kubectl exec -it nginx-pod -- ls /etc/test
+
+kubectl delete pod <pod_name>
+
+--pv.yaml
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: fresco-pv
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /tmp/fresco
+
+kubectl apply -f pv.yaml
+
+--pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fresco-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Mi
+  storageClassName: manual
+
+kubectl apply -f pvc.yaml
+
+-- Modify pod with pvc mount
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fresco-nginx-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:latest
+    volumeMounts:
+    - name: fresco-volume
+      mountPath: /usr/share/nginx/html
+  volumes:
+  - name: fresco-volume
+    persistentVolumeClaim:
+      claimName: fresco-pvc
+
+kubectl apply -f pod.yaml
+
+---Create dev namespace
+kubectl create namespace dev
+
+openssl genrsa -out emp.key 2048
+
+openssl req -new -key emp.key -out emp.csr -subj "/CN=emp/O=dev"
+
+kubectl config set-context dev-ctx --cluster=minikube --namespace=dev --user=emp
+
+kubectl config set-credentials emp --client-key=emp.key --client-certificate=emp.crt --embed-certs=true
+
+--Role.yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: emp-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "deployments"]
+  verbs: ["get", "list"]
+
+kubectl apply -f role.yaml --namespace=dev
+
+--rolebinding.yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: emp-bind
+subjects:
+- kind: User
+  name: emp
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: emp-role
+  apiGroup: rbac.authorization.k8s.io
+
+kubectl apply -f role-binding.yaml --namespace=dev
+
+kubectl config use-context dev-ctx
+
+kubectl run nginx --image=nginx --namespace=dev
+
+
+
