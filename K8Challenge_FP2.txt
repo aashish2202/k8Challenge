@@ -129,7 +129,7 @@ openssl req -new -key emp.key -out emp.csr -subj "/CN=emp/O=dev"
 apiVersion: certificates.k8s.io/v1beta1
 kind: CertificateSigningRequest
 metadata:
-  name: <csr_name>
+  name: emp_csr
 spec:
   groups:
     - system:authenticated
@@ -143,6 +143,13 @@ cat emp.csr | base64
 
 Note: 
 Replace <csr_name> with the desired name for the CSR, and <base64_encoded_csr> with the base64-encoded CSR content. 
+
+kubectl apply -f csr.yaml
+kubectl get csr
+kubectl certificate approve emp_csr
+kubectl get csr emp_csr -o jsonpath='{.status.certificate}' | base64 --decode > emp.crt
+
+
 
 kubectl config set-context dev-ctx --cluster=minikube --namespace=dev --user=emp
 
